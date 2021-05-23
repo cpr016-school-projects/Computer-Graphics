@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Part 2</title>
+		<style>
+			body { margin: 0; }
+			canvas { width: 100%; height: 100% }
+		</style>
+	</head>
+	<body>
+		<script id="fragment_shader1" type="x-shader/x-fragment">
+			//afl_ext 2017-2019
+			// URL: https://www.shadertoy.com/view/MdXyzX
+
+			#define DRAG_MULT 0.048
+			#define ITERATIONS_RAYMARCH 13
+			#define ITERATIONS_NORMAL 48
+			
+			uniform vec2 iResolution;
+			uniform vec2 iMouse;
+			uniform float iTime;
+
+			varying vec2 vUv;
+
+			#define Mouse (iMouse.xy / iResolution.xy)
+			#define Resolution (iResolution.xy)
+			#define Time (iTime)
+			
+			vec2 wavedx(vec2 position, vec2 direction, float speed, float frequency, float timeshift) {
+				float x = dot(direction, position) * frequency + timeshift * speed;
+				float wave = exp(sin(x) - 1.0);
+				float dx = wave * cos(x);
+				return vec2(wave, -dx);
+			}
+			
+			float getwaves(vec2 position, int iterations){
+				float iter = 0.0;
+				float phase = 6.0;
+				float speed = 2.0;
+				float weight = 1.0;
+				float w = 0.0;
+				float ws = 0.0;
+				for(int i=0;i<ITERATIONS_NORMAL;i++){
+					if (i >= iterations) {
+						return w/ws;
+					}
+					vec2 p = vec2(sin(iter), cos(iter));
+					vec2 res = wavedx(position, p, speed, phase, Time);
+					position += normalize(p) * res.y * weight * DRAG_MULT;
+					w += res.x * weight;
+					iter += 12.0;
+					ws += weight;
+					weight = mix(weight, 0.0, 0.2);
+					phase *= 1.18;
+					speed *= 1.07;
+				}
+				return w / ws;
+			}
+			
+			float raymarchwater(vec3 camera, vec3 start, vec3 end, float depth){
+				vec3 pos = start;
+				float h = 0.0;
+				float hupper = depth;
+				float hlower = 0.0;
+				vec2 zer = vec2(0.0);
+				vec3 dir = normalize(end - start);
+				for(int i=0;i<318;i++){
+					h = getwaves(pos.xz * 0.1, ITERATIONS_RAYMARCH) * depth - depth;
+					if(h + 0.01 > pos.y) {
+						return distance(pos, camera);
+					}
+					pos += dir * (pos.y - h);
+				}
+				return -1.0;
+			}
+			
+			float H = 0.0;
+			vec3 normal(vec2 pos, float e, float depth){
+				vec2 ex = vec2(e, 0);
+				H = getwaves(pos.xy * 0.1, ITERATIONS_NORMAL) * depth;
+				vec3 a = vec3(pos.x, H, pos.y);
+				return normalize(cross(normalize(a-vec3(pos.x - e, getwaves(pos.xy * 0.1 - ex.xy * 0.1, ITERATIONS_NORMAL) * depth, pos.y)), 
+									   normalize(a-vec3(pos.x, getwaves(pos.xy * 0.1 + ex.yx * 0.1, ITERATIONS_NORMAL) * depth, pos.y + e))));
+			}
+			mat3 rotmat(vec3 axis, float angle)
+			{
+				axis = normalize(axis);
+				float s = sin(angle);
+				float c = cos(angle);
+				float oc = 1.0 - c;
+				return mat3(oc * axis.x * axis.x + c, oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s, 
+				oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s, 
+				oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c);
+			}
+			
+			vec3 getRay(vec2 uv){
+				uv = (uv * 2.0 - 1.0) * vec2(Resolution.x / Resolution.y, 1.0);
+				vec3 proj = normalize(vec3(uv.x, uv.y, 1.0) + vec3(uv.x, uv.y, -1.0) * pow(length(uv), 2.0) * 0.05);	
+				if(Resolution.x < 400.0) return proj;
+				vec3 ray = rotmat(vec3(0.0, -1.0, 0.0), 3.0 * (Mouse.x * 2.0 - 1.0)) * rotmat(vec3(1.0, 0.0, 0.0), 1.5 * (Mouse.y * 2.0 - 1.0)) * proj;
+				return ray;
+			}
+			
+			float intersectPlane(vec3 origin, vec3 direction, vec3 point, vec3 normal)
+			{ 
+				return clamp(dot(point - origin, normal) / dot(direction, normal), -1.0, 9991999.0); 
+			}
+			
+			vec3 extra_cheap_atmosphere(vec3 raydir, vec3 sundir){
+				sundir.y = max(sundir.y, -0.07);
+				float special_trick = 1.0 / (raydir.y * 1.0 + 0.1);
+				float special_trick2 = 1.0 / (sundir.y * 11.0 + 1.0);
+				float raysundt = pow(abs(dot(sundir, raydir)), 2.0);
+				float sundt = pow(max(0.0, dot(sundir, raydir)), 8.0);
+				float mymie = sundt * special_trick * 0.2;
+				vec3 suncolor = mix(vec3(1.0), max(vec3(0.0), vec3(1.0) - vec3(5.5, 13.0, 22.4) / 22.4), special_trick2);
+				vec3 bluesky= vec3(5.5, 13.0, 22.4) / 22.4 * suncolor;
+				vec3 bluesky2 = max(vec3(0.0), bluesky - vec3(5.5, 13.0, 22.4) * 0.002 * (special_trick + -6.0 * sundir.y * sundir.y));
+				bluesky2 *= special_trick * (0.24 + raysundt * 0.24);
+				return bluesky2 * (1.0 + 1.0 * pow(1.0 - raydir.y, 3.0)) + mymie * suncolor;
+			} 
+			vec3 getatm(vec3 ray){
+				 return extra_cheap_atmosphere(ray, normalize(vec3(1.0))) * 0.5;
+				
+			}
+			
+			float sun(vec3 ray){
+				 vec3 sd = normalize(vec3(1.0));   
+				return pow(max(0.0, dot(ray, sd)), 528.0) * 110.0;
+			}
+			vec3 aces_tonemap(vec3 color){	
+				mat3 m1 = mat3(
+					0.59719, 0.07600, 0.02840,
+					0.35458, 0.90834, 0.13383,
+					0.04823, 0.01566, 0.83777
+				);
+				mat3 m2 = mat3(
+					1.60475, -0.10208, -0.00327,
+					-0.53108,  1.10813, -0.07276,
+					-0.07367, -0.00605,  1.07602
+				);
+				vec3 v = m1 * color;    
+				vec3 a = v * (v + 0.0245786) - 0.000090537;
+				vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;
+				return pow(clamp(m2 * (a / b), 0.0, 1.0), vec3(1.0 / 2.2));	
+			}
+			void main()
+			{
+				vec2 uv = gl_FragCoord.xy / iResolution.xy;
+				//vec2 uv = vUv;
+				 
+				float waterdepth = 2.1;
+				vec3 wfloor = vec3(0.0, -waterdepth, 0.0);
+				vec3 wceil = vec3(0.0, 0.0, 0.0);
+				vec3 orig = vec3(0.0, 2.0, 0.0);
+				vec3 ray = getRay(uv);
+				float hihit = intersectPlane(orig, ray, wceil, vec3(0.0, 1.0, 0.0));
+				if(ray.y >= -0.01){
+					vec3 C = getatm(ray) * 2.0 + sun(ray);
+					//tonemapping
+					C = aces_tonemap(C);
+					 gl_FragColor = vec4( C,1.0);   
+					return;
+				}
+				float lohit = intersectPlane(orig, ray, wfloor, vec3(0.0, 1.0, 0.0));
+				vec3 hipos = orig + ray * hihit;
+				vec3 lopos = orig + ray * lohit;
+				float dist = raymarchwater(orig, hipos, lopos, waterdepth);
+				vec3 pos = orig + ray * dist;
+			
+				vec3 N = normal(pos.xz, 0.001, waterdepth);
+				vec2 velocity = N.xz * (1.0 - N.y);
+				N = mix(vec3(0.0, 1.0, 0.0), N, 1.0 / (dist * dist * 0.01 + 1.0));
+				vec3 R = reflect(ray, N);
+				float fresnel = (0.04 + (1.0-0.04)*(pow(1.0 - max(0.0, dot(-N, ray)), 5.0)));
+				
+				vec3 C = fresnel * getatm(R) * 2.0 + fresnel * sun(R);
+				//tonemapping
+				C = aces_tonemap(C);
+				
+				gl_FragColor = vec4(C,1.0);
+			}
+
+		</script>
+		<!-- Vertex Shader -->
+		<script id="vertexShader" type="x-shader/x-vertex">
+
+			varying vec2 vUv;
+
+			void main()
+			{
+				vUv = uv;
+				vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+				gl_Position = projectionMatrix * mvPosition;
+			}
+
+		</script>
+		<script src="three.js"></script>
+		<script>
+				var sphereBool = false;
+				// Setting up the Scene, Camera, and Renderer
+				var scene = new THREE.Scene();
+				var camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+				var clock = new THREE.Clock();
+	
+				var renderer = new THREE.WebGLRenderer();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				document.body.appendChild( renderer.domElement );
+	
+				//Uniforms
+				uniforms2 = {
+					"iResolution": { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+					"iMouse": { value: new THREE.Vector2(200, 350) },
+					"iTime": { value: 1.0 }
+				};
+	
+				var params = [
+					[ 'fragment_shader1', uniforms2 ]
+				];
+	
+				//Adding geometry
+				var geometry = new THREE.OctahedronGeometry(0.70, 5);
+				var material = new THREE.MeshBasicMaterial( {color: 0x00ff00} );
+				var sphere = new THREE.Mesh( geometry, material );
+				scene.add( sphere );
+	
+				geometry = new THREE.OctahedronGeometry(1.5, 0);
+				material = new THREE.ShaderMaterial( {
+					uniforms: params[ 0 ][ 1 ],
+					vertexShader: document.getElementById( 'vertexShader' ).textContent,
+					fragmentShader: document.getElementById( params[ 0 ][ 0 ] ).textContent
+				} );
+				octo = new THREE.Mesh( geometry, material );
+				scene.add( octo );
+	
+				octo.add(sphere);
+
+				// Adding cubes
+				geometry = new THREE.BoxGeometry( 0.2, 0.2, 0.2);
+				material = new THREE.MeshBasicMaterial( { color: 0xff00ff } );
+				cube1 = new THREE.Mesh( geometry, material );
+				scene.add( cube1 );
+
+				material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
+				cube2 = new THREE.Mesh( geometry, material );
+				scene.add( cube2 );
+
+				material = new THREE.MeshBasicMaterial( { color: 0x0000ff } );
+				cube3 = new THREE.Mesh( geometry, material );
+				scene.add( cube3 );
+
+				material = new THREE.MeshBasicMaterial( { color: 0xffff00 } );
+				cube4 = new THREE.Mesh( geometry, material );
+				scene.add( cube4 );
+
+				material = new THREE.MeshBasicMaterial( { color: 0x00ffff } );
+				cube5 = new THREE.Mesh( geometry, material );
+				scene.add( cube5 );
+
+				material = new THREE.MeshBasicMaterial( { color: 0xff00ff } );
+				cube6 = new THREE.Mesh( geometry, material );
+				scene.add( cube6 );
+
+				cube1.position.x -= 2;
+				cube2.position.z -= 2;
+				cube3.position.y += 2;
+
+				cube4.position.x += 2;
+				cube5.position.z += 2;
+				cube6.position.y -= 2;
+
+				octo.add(cube1);
+				octo.add(cube2);
+				octo.add(cube3);
+				octo.add(cube4);
+				octo.add(cube5);
+				octo.add(cube6);
+	
+				camera.position.z = 5;
+	
+				// Calling the Renderer
+				function animate() {
+					requestAnimationFrame( animate );
+	
+					// Adding animation
+					var x = sphere.scale.x;
+					var y = sphere.scale.y;
+					var z = sphere.scale.z;
+					if (x >= 1 && x < 3.2 && sphereBool == false) {
+						x += 0.01;
+						y += 0.01;
+						z += 0.01;
+					} else if (x > 1 && sphereBool == true) {
+						x -= 0.01;
+						y -= 0.01;
+						z -= 0.01;
+					} else if (x > 3.2) {
+						sphereBool = true;
+					} else if (x <= 1 && sphereBool == true) {
+						sphereBool = false;
+					}
+
+					clock.getDelta(); // update the time
+					uniforms2[ "iTime" ].value = clock.elapsedTime;
+	
+					octo.rotation.x += 0.01;
+					octo.rotation.y += 0.01;
+	
+					octo.position.x += (Math.random() -0.5) /10;
+					octo.position.y += (Math.random() -0.5) /10;
+					octo.position.z += (Math.random() -0.5) /10;
+	
+					sphere.scale.set(x, y, z);
+	
+					renderer.render( scene, camera );
+				}
+				animate();
+			</script>
+		
+	</body>
+</html>

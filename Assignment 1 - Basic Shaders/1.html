@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
+<title>Assignment 1</title>
+
+
+<script id="vertex-shader" type="x-shader/x-vertex">
+attribute vec4 vPosition;
+attribute vec4 aVertexColor;
+uniform float theta;
+uniform float locked;
+
+varying vec4 vColor;
+
+   void main(void) {
+            vColor = aVertexColor;
+
+            gl_Position.x = (vPosition.x * cos(locked)) + locked * (sin(theta) * (vPosition.x) + cos(theta) * vPosition.x)/3.0;
+            gl_Position.y = (vPosition.y * cos(locked)) + locked * (sin(theta) * (vPosition.y) + cos(theta) * vPosition.y)/3.0;
+            gl_Position.z = 0.0;
+            gl_Position.w = 1.0;
+
+    }
+</script>
+
+<script id="fragment-shader" type="x-shader/x-fragment">
+
+precision mediump float;
+
+    varying vec4 vColor;
+    
+        void main(void) {
+            gl_FragColor = vColor;
+        }
+    
+</script>
+
+<script type="text/javascript" src="../Common/webgl-utils.js"></script>
+<script type="text/javascript" src="../Common/initShaders.js"></script>
+<script type="text/javascript" src="../Common/MV.js"></script>
+<script type="text/javascript" src="1.js"></script>
+</head>   
+
+<body>
+<canvas id="gl-canvas" width="512" height="512">
+Oops ... your browser doesn't support the HTML5 canvas element
+</canvas>
+</body>
+</html>
