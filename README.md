@@ -26,13 +26,14 @@ We explore graphics hardware, algorithms for generating graphics primitives (lin
 ## General Information
 * Open each assignment in the browser by opening the associated HTML file listed below. 
 * Many of these projects have textures that cannot be loaded due to many browsers' CORS policy. There are a few ways around this, including hosting the projects on a website, or disabling the policy in each individual browser.
+* None of the files in the Common folder are created by me. 
 
 
 
 ## Final Project
 #### HTML File: final.html
 #### Description:
-* Our final project had a lot of freedom, but had to show 
+* Our final project had a lot of freedom, but had to demonstrate knowledge in multiple areas of the course.
 * For my final project, I created a browser game where you have to catch a moving ball in a room filled with reflective objects.
 
 ## Assignment 3
